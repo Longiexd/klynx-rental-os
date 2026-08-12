@@ -1,0 +1,15 @@
+#API Framework
+
+fastapi
+
+#server 
+
+uvicorn[standard]
+
+#environment variables later
+
+python-dotenv
+
+#communicate with odoo API 
+
+requests

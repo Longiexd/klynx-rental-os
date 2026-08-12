@@ -1,0 +1,57 @@
+@import "tailwindcss";
+@import "../styles/theme.css";
+
+@theme {
+  /* Colors → generates bg-*, text-*, border-*, ring-* utilities */
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-secondary: var(--surface-secondary);
+  --color-border: var(--border);
+  --color-text: var(--text);
+  --color-text-secondary: var(--text-secondary);
+  --color-muted: var(--muted);
+
+  --color-lime: var(--lime);
+  --color-lime-dark: var(--lime-dark);
+  --color-pink: var(--pink);
+  --color-pink-dark: var(--pink-dark);
+
+  --color-success: var(--success);
+  --color-danger: var(--danger);
+
+  /* Shadows → generates shadow-glow-lime, shadow-glow-pink, shadow-card */
+  --shadow-glow-lime: var(--shadow-glow-lime);
+  --shadow-glow-pink: var(--shadow-glow-pink);
+  --shadow-card: var(--shadow-card);
+
+  /* Fonts — Geist is the default body font ("everything else"),
+     Syne is opt-in via font-syne for titles/logo/marketing */
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-syne: var(--font-syne), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+}
+
+body {
+  background: var(--color-background);
+  color: var(--color-text);
+}
+
+::selection {
+  background: var(--color-lime);
+  color: var(--color-background);
+}
+
+/* Dark scrollbar to match the theme instead of the OS default */
+::-webkit-scrollbar {
+  width: 10px;
+}
+::-webkit-scrollbar-track {
+  background: var(--color-background);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-surface-secondary);
+}

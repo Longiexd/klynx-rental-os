@@ -1,0 +1,45 @@
+//======== Dependencies ========
+
+node_modules/
+.pnpm-store/
+
+//======== Next.js ========
+
+.next/
+out/
+tsconfig.tsbuildinfo
+
+//======== Python ========
+
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+//======== Environment ========
+
+.env
+.env.*
+!.env.example
+
+//======== Secrets / Certificates ========
+
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+
+//======== Logs ========
+
+*.log
+logs/
+
+//======== OS / Editor ========
+
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

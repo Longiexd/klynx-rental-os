@@ -1,0 +1,52 @@
+services:
+
+  #======== FRONTEND ========
+
+  frontend:
+    build:
+      context: ./frontend
+      target: development
+
+    container_name: rental-os-frontend
+
+    ports:
+      - "3100:3000"
+
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+
+    environment:
+      NODE_ENV: development
+      WATCHPACK_POLLING: "true"
+
+    depends_on:
+      - backend
+
+    networks:
+      - rental-os
+
+
+  #======== BACKEND ========
+
+  backend:
+    build:
+      context: ./backend
+
+    container_name: rental-os-api
+
+    ports:
+      - "8000:8000"
+
+    env_file:
+      - ./backend/.env
+
+    networks:
+      - rental-os
+
+
+  #======== NETWORK ========
+
+networks:
+  rental-os:
+    driver: bridge

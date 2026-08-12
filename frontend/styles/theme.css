@@ -1,0 +1,27 @@
+:root {
+  /* Brand — Green */
+  --lime: #C8F065;
+  --lime-dark: #6E9501;
+
+  /* Brand — Pink (accent only) */
+  --pink: #F06AAA;
+  --pink-dark: #54273C;
+
+  /* Neutrals */
+  --background: #09090B;
+  --surface: #111113;
+  --surface-secondary: #17171A;
+  --border: #2B2B30;
+  --text: #FFFFFF;
+  --text-secondary: #A1A1AA;
+  --muted: #71717A;
+
+  /* Semantic aliases (reference brand colors, not hardcoded) */
+  --success: var(--lime);
+  --danger: #F0656A;
+
+  /* Reusable glow shadows — used in buttons/preview cards */
+  --shadow-glow-lime: 0 0 30px rgba(200, 240, 101, 0.15);
+  --shadow-glow-pink: 0 0 30px rgba(240, 106, 170, 0.15);
+  --shadow-card: 0 30px 120px rgba(0, 0, 0, 0.7);
+}
