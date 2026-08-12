@@ -47,33 +47,55 @@ This repository is the **sanitized public portfolio version** of the project.
 
 The frontend communicates exclusively with the FastAPI layer. The backend handles communication with Odoo through its API rather than exposing ERP credentials or endpoints to the browser.
 
----
+----
 
 ## Tech Stack
 
 ### Frontend
 
-* **Next.js**
-* **React**
-* **TypeScript**
-* **Tailwind CSS**
-* **Lucide Icons**
-* Component-based UI architecture
+<p>
+  <img src="https://cdn.simpleicons.org/nextdotjs" width="32" title="Next.js" />
+  <img src="https://cdn.simpleicons.org/react" width="32" title="React" />
+  <img src="https://cdn.simpleicons.org/typescript" width="32" title="TypeScript" />
+  <img src="https://cdn.simpleicons.org/tailwindcss" width="32" title="Tailwind CSS" />
+  <img src="https://cdn.simpleicons.org/lucide" width="32" title="Lucide" />
+</p>
 
 ### Backend
 
-* **Python**
-* **FastAPI**
-* **Pydantic**
-* **Uvicorn**
-* **Odoo JSON-RPC**
+<p>
+  <img src="https://cdn.simpleicons.org/python" width="32" title="Python" />
+  <img src="https://cdn.simpleicons.org/fastapi" width="32" title="FastAPI" />
+  <img src="https://cdn.simpleicons.org/pydantic" width="32" title="Pydantic" />
+</p>
 
 ### Infrastructure
 
-* **Docker**
-* **Docker Compose**
-* Environment-based configuration
-* Reverse-proxy ready architecture
+<p>
+  <img src="https://cdn.simpleicons.org/docker" width="32" title="Docker" />
+  <img src="https://cdn.simpleicons.org/nginx" width="32" title="Nginx" />
+  <img src="https://cdn.simpleicons.org/gnubash" width="32" title="Bash" />
+</p>
+
+**Docker Compose** · **Uvicorn**
+
+### Data & ERP
+
+<p>
+  <img src="https://cdn.simpleicons.org/postgresql" width="32" title="PostgreSQL" />
+  <img src="https://cdn.simpleicons.org/odoo" width="32" title="Odoo" />
+</p>
+
+**Odoo JSON-RPC**
+
+### Development & Version Control
+
+<p>
+  <img src="https://cdn.simpleicons.org/git" width="32" title="Git" />
+  <img src="https://cdn.simpleicons.org/github" width="32" title="GitHub" />
+</p>
+
+**Git · GitHub · Bash · Environment-based Configuration**
 
 ### Data
 
