@@ -1,15 +1,16 @@
 #API Framework
 
-fastapi
+fastapi==0.141.1
 
 #server 
 
-uvicorn[standard]
+uvicorn[standard]==0.54.0
 
 #environment variables later
 
-python-dotenv
+python-dotenv==1.2.3
 
 #communicate with odoo API 
 
-requests
+requests==2.34.2
+cryptography==50.0.1

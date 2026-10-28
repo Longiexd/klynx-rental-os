@@ -1,821 +1,506 @@
 "use client";
 
+import { useFeatures } from "@/components/providers/FeaturesProvider";
+import { RentalFleetNotice } from "@/components/fleet/FleetCare";
+
+import { useKlynxUI } from "@/components/providers/UIProvider";
+
+import ActivitiesPanel from "@/components/activities/ActivitiesPanel";
+
 import {
-  Activity,
+  AlertTriangle,
+  ArrowDownLeft,
   ArrowUpRight,
-  CalendarDays,
   Car,
-  ClipboardList,
-  MoreHorizontal,
-  TrendingUp,
+  Clock3,
+  Plus,
   Users,
 } from "lucide-react";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 
-// ==========================================================
+import { PageHeader } from "@/components/ui/PageHeader";
+import { StatCard } from "@/components/ui/StatCard";
+import { StatusBadge } from "@/components/ui/StatusBadge";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { Card, CardHeader } from "@/components/ui/Card";
+import CreateRentalModal from "@/components/rentals/CreateRentalModal";
+import { RentalActionMenu } from "@/components/rentals/RentalActionMenu";
+import ReturnVehicleModal from "@/components/rentals/ReturnVehicleModal";
+
+import { formatCurrency, formatDateShort, isSameDay, parseDate } from "@/lib/format";
+import { getFleetStatus, getRentalState, rentalStateMeta, type RentalState } from "@/lib/status";
+import { API_URL, apiRequest } from "@/lib/api-config";
+
+// ============================================================
 // TYPES
-// ==========================================================
+// (kept local — these mirror raw Odoo fields returned by /cars,
+// /customers, /sales, /invoices, distinct from the shapes in
+// lib/api.ts used by other flows)
+// ============================================================
+
+type RelationalValue =
+  | string
+  | number
+  | { id?: number; name?: string }
+  | null
+  | false
+  | undefined;
 
 type CarData = {
   id: number;
   name: string;
   license_plate: string | null;
   model: string | null;
-  status: string | null;
+  category?: string | null;
+  status: RelationalValue;
+  active?: boolean;
 };
 
 type CustomerData = {
   id: number;
   name: string;
-  phone: string | null;
-  email: string | null;
-  mobile: string | null;
 };
 
-type LeadData = {
+type SaleData = {
   id: number;
   name: string;
-  customer: string | null;
-  phone: string | null;
-  email: string | null;
-  stage: string | null;
-  created: string | null;
+  customer: RelationalValue;
+  state: string;
+  date_order: string | null;
+  commitment_date: string | null;
+  amount_total: number;
+  vehicle_id?: number | null;
+  returned?: boolean;
+  picked_up?: boolean;
+  booking_status?: string;
+  paperwork?: {documents_ready: boolean; contract_ready: boolean};
 };
 
-type CarsResponse = {
-  count: number;
-  cars: CarData[];
+type InvoiceData = {
+  id: number;
+  state: string;
+  payment_state: string;
+  amount_residual: number;
 };
 
-type CustomersResponse = {
-  count: number;
-  customers: CustomerData[];
+// Recent-rentals ordering: quotations first (need action), then
+// confirmed/ongoing (in progress), then completed/cancelled last —
+// matches the priority the dashboard is meant to surface.
+const STATUS_PRIORITY: Record<RentalState, number> = {
+  pickup_due: 0,
+  return_due: 0,
+  draft: 0,
+  confirmed: 1,
+  ongoing: 1,
+  completed: 2,
+  cancelled: 3,
 };
 
-type LeadsResponse = {
-  count: number;
-  leads: LeadData[];
-};
+function displayValue(value: RelationalValue): string {
+  if (value === null || value === undefined || value === false) return "";
+  if (typeof value === "string" || typeof value === "number") return String(value);
+  return value.name || "";
+}
 
-// ==========================================================
-// API CONFIGURATION
-// ==========================================================
-
-const API_URL =
-  process.env.NEXT_PUBLIC_API_URL ||
-  "https://api.rental-os.example.com";
-
-// ==========================================================
-// TEMPORARY RENTAL DATA
-// ==========================================================
-// Rentals will become live once the backend exposes
-// Odoo rental / reservation data.
-// ==========================================================
-
-const rentals = [
-  {
-    customer: "Rental data",
-    vehicle: "Waiting for Odoo rental data",
-    pickup: "--:--",
-    returnDate: "--",
-    status: "Upcoming",
-  },
-];
-
-// ==========================================================
-// TEMPORARY ACTIVITY DATA
-// ==========================================================
-
-const activity = [
-  {
-    time: "--:--",
-    vehicle: "Rental activity",
-    type: "Waiting for rental API",
-    accent: "green",
-  },
-];
-
-// ==========================================================
-// DASHBOARD PAGE
-// ==========================================================
+// ============================================================
+// COMPONENT
+// ============================================================
 
 export default function DashboardPage() {
-  // ==========================================================
-// DEBUG
-// ==========================================================
-
-console.log("KLYNX DASHBOARD LOADED");
-console.log("API URL:", API_URL);
-
+  const features = useFeatures();
+  const { t } = useKlynxUI();
+  const router = useRouter();
   const [cars, setCars] = useState<CarData[]>([]);
   const [customers, setCustomers] = useState<CustomerData[]>([]);
-  const [leads, setLeads] = useState<LeadData[]>([]);
+  const [sales, setSales] = useState<SaleData[]>([]);
+  const [invoices, setInvoices] = useState<InvoiceData[]>([]);
 
   const [loading, setLoading] = useState(true);
+  const [bookingOpen, setBookingOpen] = useState(false);
+  const [returningVehicle, setReturningVehicle] = useState<{
+    id: number; orderId: number; nextState: "Nettoyage" | "Disponible";
+  } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // ========================================================
-  // FETCH DASHBOARD DATA
-  // ========================================================
+  // Neutral on the server (and on the client's very first render,
+  // before this effect runs) so SSR output and the initial client
+  // render always match exactly. Filled in right after mount —
+  // computing this directly during render was the actual bug:
+  // the server renders in its own timezone while the browser
+  // hydrates in the agent's local one, so near an hour boundary
+  // they'd disagree on "Good morning" vs "Good evening" and React
+  // would flag a hydration mismatch.
+  const [greetingText, setGreetingText] = useState("Welcome back.");
 
   useEffect(() => {
-    async function loadDashboard() {
+    const hour = new Date().getHours();
+
+    if (hour < 12) setGreetingText("Good morning.");
+    else if (hour < 18) setGreetingText("Good afternoon.");
+    else setGreetingText("Good evening.");
+  }, []);
+
+  async function loadDashboard() {
+    try {
+      setLoading(true);
+      setError(null);
+
       try {
-        setLoading(true);
-        setError(null);
-
-        const [carsResponse, customersResponse, leadsResponse] =
-          await Promise.all([
-            fetch(`${API_URL}/cars`, {
-              cache: "no-store",
-            }),
-
-            fetch(`${API_URL}/customers`, {
-              cache: "no-store",
-            }),
-
-            fetch(`${API_URL}/leads`, {
-              cache: "no-store",
-            }),
-          ]);
-
-        if (!carsResponse.ok) {
-          throw new Error(
-            `Cars API returned ${carsResponse.status}`
-          );
-        }
-
-        if (!customersResponse.ok) {
-          throw new Error(
-            `Customers API returned ${customersResponse.status}`
-          );
-        }
-
-        if (!leadsResponse.ok) {
-          throw new Error(
-            `Leads API returned ${leadsResponse.status}`
-          );
-        }
-
-        const carsData: CarsResponse =
-          await carsResponse.json();
-
-        const customersData: CustomersResponse =
-          await customersResponse.json();
-
-        const leadsData: LeadsResponse =
-          await leadsResponse.json();
-
-        setCars(carsData.cars || []);
-        setCustomers(customersData.customers || []);
-        setLeads(leadsData.leads || []);
-      } catch (err) {
-        console.error("Dashboard API error:", err);
-
-        setError(
-          err instanceof Error
-            ? err.message
-            : "Unable to load dashboard data."
-        );
-      } finally {
-        setLoading(false);
+        await apiRequest(`${API_URL}/cars/sync`, { method: "POST" });
+      } catch (syncError) {
+        console.error("Fleet state sync failed:", syncError);
       }
-    }
 
+      const [carsRes, customersRes, salesRes, invoicesRes] = await Promise.all([
+        apiRequest(`${API_URL}/cars`, { cache: "no-store" }),
+        apiRequest(`${API_URL}/customers`, { cache: "no-store" }),
+        apiRequest(`${API_URL}/sales?for_fleet=true&with_paperwork=true`, { cache: "no-store" }),
+        apiRequest(`${API_URL}/invoices`, { cache: "no-store" }),
+      ]);
+
+      if (!carsRes.ok) throw new Error(`Cars API returned ${carsRes.status}`);
+      if (!customersRes.ok) throw new Error(`Customers API returned ${customersRes.status}`);
+      if (!salesRes.ok) throw new Error(`Sales API returned ${salesRes.status}`);
+      if (!invoicesRes.ok) throw new Error(`Invoices API returned ${invoicesRes.status}`);
+
+      const carsData = await carsRes.json();
+      const customersData = await customersRes.json();
+      const salesData = await salesRes.json();
+      const invoicesData = await invoicesRes.json();
+
+      setCars(Array.isArray(carsData.cars) ? carsData.cars : []);
+      setCustomers(Array.isArray(customersData.customers) ? customersData.customers : []);
+      setSales(Array.isArray(salesData.sales) ? salesData.sales : []);
+      setInvoices(Array.isArray(invoicesData.invoices) ? invoicesData.invoices : []);
+    } catch (err) {
+      console.error("Dashboard API error:", err);
+      setError(err instanceof Error ? err.message : "Unable to load dashboard data.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
     loadDashboard();
   }, []);
 
-  // ========================================================
+  // Shared by every dashboard action row: run a rental mutation,
+  // reload once, surface an error if it fails. One implementation
+  // instead of a bespoke try/catch per action.
+  async function runAction(path: string, method: string, notFetchLabel: string, body?: unknown) {
+    try {
+      const response = await apiRequest(`${API_URL}${path}`, {
+        method,
+        ...(body !== undefined ? { headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : {}),
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => null);
+        throw new Error(data?.detail || `API returned ${response.status}`);
+      }
+      await loadDashboard();
+    } catch (err) {
+      console.error(`${notFetchLabel} failed:`, err);
+      setError(err instanceof Error ? err.message : `Unable to ${notFetchLabel.toLowerCase()}.`);
+    }
+  }
+
+  function handleReturn(vehicleId: number, nextState: "Nettoyage" | "Disponible", saleId: number) {
+    setReturningVehicle({ id: vehicleId, orderId: saleId, nextState });
+  }
+
+  function handlePickedUp(saleId: number) {
+    void runAction(`/rentals/${saleId}/picked-up`, "POST", "confirm pickup");
+  }
+
+  function handleCancel(saleId: number) {
+    void runAction(`/rentals/${saleId}/cancel`, "POST", "cancel booking");
+  }
+
+  // --------------------------------------------------------
   // DERIVED DATA
-  // ========================================================
+  // --------------------------------------------------------
 
-  const availableCars = cars.filter((car) => {
-    const status = car.status?.toLowerCase() || "";
+  const carsById = useMemo(() => {
+    const map = new Map<number, CarData>();
+    cars.forEach((car) => map.set(car.id, car));
+    return map;
+  }, [cars]);
 
-    return (
-      status.includes("available") ||
-      status.includes("ready") ||
-      status.includes("available for rent")
-    );
-  }).length;
+  const availableCars = useMemo(
+    () =>
+      cars.filter(
+        (car) =>
+          getFleetStatus({ status: displayValue(car.status), active: car.active }) ===
+          "available"
+      ).length,
+    [cars]
+  );
 
-  // ========================================================
-  // RENDER
-  // ========================================================
+  const activeSales = useMemo(
+    () => sales.filter((sale) => sale.state !== "cancel" && sale.booking_status !== "cancelled" && !sale.returned && (sale.booking_status === "confirmed" || (sale.booking_status !== "quotation" && ["sale", "done"].includes(sale.state)))),
+    [sales]
+  );
+
+  const unpaidInvoices = invoices.filter(
+    (invoice) => invoice.payment_state !== "paid" && invoice.state === "posted"
+  );
+
+  const outstandingAmount = unpaidInvoices.reduce(
+    (sum, invoice) => sum + (Number(invoice.amount_residual) || 0),
+    0
+  );
+
+  const today = new Date();
+
+  // Pickups due today: rental starts today, not yet picked up or completed/cancelled.
+  const pickupsToday = useMemo(() => {
+    return activeSales.filter((sale) => {
+      const date = parseDate(sale.date_order);
+      return date && isSameDay(date, today) && !sale.picked_up;
+    });
+  }, [activeSales]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Returns due today: commitment date is today, order still open.
+  const returnsToday = useMemo(() => {
+    return activeSales.filter((sale) => {
+      const date = parseDate(sale.commitment_date);
+      return (
+        date &&
+        isSameDay(date, today) &&
+        sale.picked_up &&
+        !sale.returned
+      );
+    });
+  }, [activeSales]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Overdue: commitment date has passed and order is still open — this
+  // is what actually needs a sales agent's attention, not a generic feed.
+  const overdue = useMemo(() => {
+    return activeSales.filter((sale) => {
+      const date = parseDate(sale.commitment_date);
+      return (
+        date &&
+        date < today &&
+        !isSameDay(date, today) &&
+        sale.picked_up &&
+        !sale.returned
+      );
+    });
+  }, [activeSales]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const latePickups = activeSales.filter(sale => getRentalState(sale) === "pickup_due");
+  const missingPaperwork = pickupsToday.filter(sale => !sale.paperwork?.contract_ready);
+  const attentionCount = overdue.length + latePickups.length + missingPaperwork.length;
+
+  // Recent rentals: quotations first, then confirmed/ongoing, then
+  // completed/cancelled last — the full list (cancelled included),
+  // not just activeSales, since cancelled bookings still need to
+  // show up (at the back of the queue) for the count to be honest.
+  const recentRentals = useMemo(() => {
+    return [...sales]
+      .sort((a, b) => {
+        const priorityDiff = STATUS_PRIORITY[getRentalState(a)] - STATUS_PRIORITY[getRentalState(b)];
+        if (priorityDiff !== 0) return priorityDiff;
+        return (b.date_order || "").localeCompare(a.date_order || "");
+      })
+      .slice(0, 5);
+  }, [sales]);
+
+  function vehicleLabel(sale: SaleData): string {
+    if (!sale.vehicle_id) return "No vehicle assigned";
+    const car = carsById.get(sale.vehicle_id);
+    return car ? car.name : `Vehicle #${sale.vehicle_id}`;
+  }
 
   return (
-    <main className="mx-auto max-w-[1500px] p-5 sm:p-8">
+    <main className="mx-auto max-w-[1400px] p-5 sm:p-8">
+      <PageHeader
+        breadcrumb="Overview"
+        title={greetingText}
+        subtitle="Here's what's happening with your rental operation."
+        action={
+          <button
+            type="button"
+            onClick={() => setBookingOpen(true)}
+            className="flex h-11 items-center gap-2 rounded-xl bg-lime px-5 text-sm font-semibold text-[#111113] shadow-glow-lime transition hover:bg-lime-dark"
+          >
+            <Plus size={16} />
+            New rental
+          </button>
+        }
+      />
 
-      {/* ====================================================
-          HEADER
-      ==================================================== */}
-
-      <section className="flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
-
-        <div>
-          <div className="mb-2 flex items-center gap-2 text-[11px] text-[#71717A]">
-            <span>Workspace</span>
-            <span>/</span>
-            <span className="text-[#A1A1AA]">
-              Overview
-            </span>
-          </div>
-
-          <h1 className="font-[Syne] text-[26px] font-semibold tracking-[-0.035em] sm:text-[30px]">
-            Good afternoon.
-          </h1>
-
-          <p className="mt-1 text-sm text-[#71717A]">
-            Here&apos;s what&apos;s happening with your rental
-            operation.
-          </p>
-        </div>
-
-        <button className="flex h-9 items-center justify-center gap-2 rounded-lg bg-[#C8F065] px-4 text-xs font-medium text-[#09090B] shadow-[0_0_24px_rgba(200,240,101,.08)] transition hover:bg-[#d7ff80]">
-          <ClipboardList size={14} />
-          New rental
-        </button>
-
-      </section>
-
-      {/* ====================================================
-          API ERROR
-      ==================================================== */}
+      <CreateRentalModal
+        open={bookingOpen}
+        onClose={() => setBookingOpen(false)}
+        onCreated={() => {
+          setBookingOpen(false);
+          loadDashboard();
+        }}
+      />
 
       {error && (
-        <div className="mt-4 rounded-xl border border-[#F06AAA]/30 bg-[#F06AAA]/5 px-4 py-3 text-xs text-[#F06AAA]">
-          Unable to load live dashboard data: {error}
+        <div className="mt-4 rounded-xl border border-danger/30 bg-danger/5 px-4 py-3 text-xs text-danger">
+          {error}
         </div>
       )}
 
-      {/* ====================================================
-          KPI CARDS
-      ==================================================== */}
-
-      <section className="mt-7 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-
-        <StatCard
-          label="Fleet"
-          value={
-            loading
-              ? "—"
-              : cars.length.toString()
-          }
-          detail="vehicles"
-          change="Odoo"
-          icon={<Car size={15} />}
-          accent="green"
-        />
-
-        <StatCard
-          label="Customers"
-          value={
-            loading
-              ? "—"
-              : customers.length.toString()
-          }
-          detail="in Odoo"
-          change="Odoo"
-          icon={<Users size={15} />}
-          accent="green"
-        />
-
-        <StatCard
-          label="Available"
-          value={
-            loading
-              ? "—"
-              : availableCars.toString()
-          }
-          detail="ready to rent"
-          change="Odoo"
-          icon={<Activity size={15} />}
-          accent="pink"
-        />
-
-        <StatCard
-          label="CRM Leads"
-          value={
-            loading
-              ? "—"
-              : leads.length.toString()
-          }
-          detail="active leads"
-          change="Odoo"
-          icon={<TrendingUp size={15} />}
-          accent="green"
-        />
-
+      {/* QUICK METRICS — glance-only, each links to where the action happens */}
+      <section aria-label="Overview metrics" className="mt-6 grid grid-cols-2 gap-3 xl:grid-cols-4">
+        <Link href="/dashboard/fleet" className="rounded-xl"><StatCard icon={<Car size={15} />} label="Available vehicles" value={availableCars.toString()} detail={`of ${cars.length} in fleet`} loading={loading} /></Link>
+        <a href="#attention" className="rounded-xl"><StatCard icon={<span className={attentionCount ? "klynx-attention-flicker inline-flex" : "inline-flex"}><AlertTriangle size={15} /></span>} label="Needs attention" value={attentionCount.toString()} detail="pickup paperwork / late pickups / overdue returns" tone={attentionCount ? "danger" : undefined} loading={loading} /></a>
+        <Link href="/dashboard/customers" className="rounded-xl"><StatCard icon={<Users size={15} />} label="Customers" value={customers.length.toString()} detail="customer records" tone="pink" loading={loading} /></Link>
+        <Link href="/dashboard/rentals" className="rounded-xl"><StatCard icon={<ArrowUpRight size={15} />} label="Outstanding" value={formatCurrency(outstandingAmount)} detail="posted invoices to collect" tone="danger" loading={loading} /></Link>
       </section>
 
-      {/* ====================================================
-          MAIN GRID
-      ==================================================== */}
-
-      <section className="mt-4 grid gap-4 xl:grid-cols-[1.5fr_1fr]">
-
-        {/* ==================================================
-            FLEET OVERVIEW
-        ================================================== */}
-
-        <div className="overflow-hidden rounded-xl border border-[#2B2B30] bg-[#111113]/80">
-
-          <div className="flex items-center justify-between border-b border-[#2B2B30] px-5 py-4">
-
-            <div>
-              <h2 className="font-[Syne] text-sm font-semibold">
-                Fleet overview
-              </h2>
-
-              <p className="mt-1 text-[11px] text-[#71717A]">
-                Live vehicle data from Odoo
-              </p>
-            </div>
-
-            <a
-              href="/dashboard/fleet"
-              className="rounded-md border border-[#2B2B30] bg-[#17171A] px-2.5 py-1.5 text-[10px] text-[#A1A1AA] transition hover:text-white"
-            >
-              View fleet
-            </a>
-
-          </div>
-
-          <div className="p-5">
-
-            <div className="flex items-end justify-between">
-
-              <div>
-                <div className="font-[Syne] text-3xl font-semibold">
-                  {loading
-                    ? "—"
-                    : cars.length}
-                </div>
-
-                <div className="mt-1 text-[11px] text-[#71717A]">
-                  vehicles in Odoo
-                </div>
+      {/* 1. VEHICLE ATTENTION — overdue returns need a decision before anything else */}
+      {!loading && attentionCount > 0 && (
+        <section id="attention" className="mt-4 scroll-mt-5">
+          <Card className="border-danger/30">
+            <CardHeader
+              title="Needs attention"
+              subtitle={t(`${missingPaperwork.length} pickup paperwork incomplete · ${latePickups.length} late pickup${latePickups.length === 1 ? "" : "s"} · ${overdue.length} overdue return${overdue.length === 1 ? "" : "s"}`)}
+            />
+            <div className="p-4">
+              <div className="space-y-1">
+                {missingPaperwork.map(sale => <ScheduleRow key={`paperwork-${sale.id}`} sale={sale} vehicleLabel={vehicleLabel(sale)} icon={<AlertTriangle size={14} />} urgent kind="pickup" onPickedUp={handlePickedUp} onCancel={handleCancel} />)}
+                {latePickups.map(sale => <ScheduleRow key={sale.id} sale={sale} vehicleLabel={vehicleLabel(sale)}
+                  icon={<AlertTriangle size={14} />} urgent kind="pickup" onPickedUp={handlePickedUp} onCancel={handleCancel} />)}
+                {overdue.map((sale) => (
+                  <ScheduleRow
+                    key={sale.id}
+                    sale={sale}
+                    vehicleLabel={vehicleLabel(sale)}
+                    icon={<AlertTriangle size={14} />}
+                    urgent
+                    kind="overdue"
+                    onReturn={handleReturn}
+                    onCancel={handleCancel}
+                  />
+                ))}
               </div>
-
-              <div className="flex items-center gap-1.5 text-[11px] text-[#C8F065]">
-                <Car size={13} />
-                Live
-              </div>
-
             </div>
+          </Card>
+        </section>
+      )}
 
-            {/* ==================================================
-                FLEET LIST
-            ================================================== */}
-
-            <div className="mt-7">
-
-              {loading ? (
-
-                <div className="space-y-3">
-
-                  {[1, 2, 3, 4].map((item) => (
-                    <div
-                      key={item}
-                      className="h-12 animate-pulse rounded-lg bg-[#17171A]"
-                    />
-                  ))}
-
-                </div>
-
-              ) : cars.length === 0 ? (
-
-                <div className="rounded-lg border border-[#2B2B30] bg-[#17171A]/50 px-4 py-8 text-center text-xs text-[#71717A]">
-                  No vehicles found in Odoo.
-                </div>
-
-              ) : (
-
-                <div className="divide-y divide-[#2B2B30]">
-
-                  {cars.slice(0, 6).map((car) => (
-
-                    <div
-                      key={car.id}
-                      className="flex items-center gap-3 py-3"
-                    >
-
-                      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#C8F065]/10 text-[#C8F065]">
-                        <Car size={15} />
-                      </div>
-
-                      <div className="min-w-0 flex-1">
-
-                        <div className="truncate text-xs font-medium">
-                          {car.name ||
-                            "Unnamed vehicle"}
-                        </div>
-
-                        <div className="mt-0.5 truncate text-[10px] text-[#71717A]">
-                          {car.model ||
-                            "No model"}
-
-                          {car.license_plate
-                            ? ` · ${car.license_plate}`
-                            : ""}
-                        </div>
-
-                      </div>
-
-                      <span className="rounded-md bg-[#17171A] px-2 py-1 text-[9px] text-[#A1A1AA]">
-                        {car.status ||
-                          "No status"}
-                      </span>
-
-                    </div>
-
-                  ))}
-
-                </div>
-
-              )}
-
-            </div>
-
-          </div>
-
-        </div>
-
-        {/* ==================================================
-            CRM LEADS
-        ================================================== */}
-
-        <div className="rounded-xl border border-[#2B2B30] bg-[#111113]/80">
-
-          <div className="border-b border-[#2B2B30] px-5 py-4">
-
-            <h2 className="font-[Syne] text-sm font-semibold">
-              CRM leads
-            </h2>
-
-            <p className="mt-1 text-[11px] text-[#71717A]">
-              Live leads from Odoo CRM
-            </p>
-
-          </div>
-
-          <div className="divide-y divide-[#2B2B30]">
-
-            {loading ? (
-
-              [1, 2, 3, 4].map((item) => (
-                <div
-                  key={item}
-                  className="mx-5 h-12 animate-pulse bg-[#17171A]"
-                />
-              ))
-
-            ) : leads.length === 0 ? (
-
-              <div className="px-5 py-10 text-center text-xs text-[#71717A]">
-                No CRM leads found.
-              </div>
-
+      {/* 2. PICKUPS + RETURNS TODAY — the day's must-do actions */}
+      <section className="mt-4 grid gap-4 xl:grid-cols-2">
+        <Card>
+          <CardHeader title="Pickups today" subtitle="Rentals starting today" />
+          <div className="p-4">
+            {loading ? <LoadingRows /> : pickupsToday.length === 0 ? (
+              <EmptyState icon={<Clock3 />} title="No pickups today" description="Nothing scheduled to go out today." />
             ) : (
-
-              leads.slice(0, 6).map((lead) => (
-
-                <div
-                  key={lead.id}
-                  className="flex items-center gap-3 px-5 py-3.5"
-                >
-
-                  <div className="flex h-7 w-7 items-center justify-center rounded-full bg-[#F06AAA]/10 text-[10px] text-[#F06AAA]">
-                    {lead.name
-                      ?.charAt(0)
-                      ?.toUpperCase() ||
-                      "L"}
-                  </div>
-
-                  <div className="min-w-0 flex-1">
-
-                    <div className="truncate text-xs font-medium">
-                      {lead.name ||
-                        "Untitled lead"}
-                    </div>
-
-                    <div className="mt-0.5 truncate text-[10px] text-[#71717A]">
-                      {lead.customer ||
-                        "No customer"}
-                    </div>
-
-                  </div>
-
-                  <span className="rounded-md bg-[#17171A] px-2 py-1 text-[9px] text-[#A1A1AA]">
-                    {lead.stage ||
-                      "No stage"}
-                  </span>
-
-                </div>
-
-              ))
-
+              <div className="space-y-1">
+                {pickupsToday.map((sale) => (
+                  <ScheduleRow key={sale.id} sale={sale} vehicleLabel={vehicleLabel(sale)} icon={<ArrowUpRight size={14} />} kind="pickup" onPickedUp={handlePickedUp} onCancel={handleCancel} />
+                ))}
+              </div>
             )}
-
           </div>
+        </Card>
 
-        </div>
-
-      </section>
-
-      {/* ====================================================
-          RECENT RENTALS
-      ==================================================== */}
-
-      <section className="mt-4 overflow-hidden rounded-xl border border-[#2B2B30] bg-[#111113]/80">
-
-        <div className="flex items-center justify-between border-b border-[#2B2B30] px-5 py-4">
-
-          <div>
-            <h2 className="font-[Syne] text-sm font-semibold">
-              Recent rentals
-            </h2>
-
-            <p className="mt-1 text-[11px] text-[#71717A]">
-              Rental activity
-            </p>
+        <Card>
+          <CardHeader title="Returns today" subtitle="Rentals due back today" />
+          <div className="p-4">
+            {loading ? <LoadingRows /> : returnsToday.length === 0 ? (
+              <EmptyState icon={<Clock3 />} title="No returns today" description="Nothing due back today." />
+            ) : (
+              <div className="space-y-1">
+                {returnsToday.map((sale) => (
+                  <ScheduleRow key={sale.id} sale={sale} vehicleLabel={vehicleLabel(sale)} icon={<ArrowDownLeft size={14} />} kind="return" onReturn={handleReturn} />
+                ))}
+              </div>
+            )}
           </div>
-
-          <button className="text-[11px] text-[#A1A1AA] transition hover:text-[#C8F065]">
-            View all →
-          </button>
-
-        </div>
-
-        <div className="overflow-x-auto">
-
-          <table className="w-full min-w-[700px] text-left">
-
-            <thead>
-
-              <tr className="border-b border-[#2B2B30] text-[10px] uppercase tracking-wider text-[#71717A]">
-
-                <th className="px-5 py-3 font-medium">
-                  Customer
-                </th>
-
-                <th className="px-5 py-3 font-medium">
-                  Vehicle
-                </th>
-
-                <th className="px-5 py-3 font-medium">
-                  Pickup
-                </th>
-
-                <th className="px-5 py-3 font-medium">
-                  Return
-                </th>
-
-                <th className="px-5 py-3 font-medium">
-                  Status
-                </th>
-
-                <th className="px-5 py-3" />
-
-              </tr>
-
-            </thead>
-
-            <tbody className="divide-y divide-[#2B2B30]">
-
-              {rentals.map((rental) => (
-
-                <tr
-                  key={`${rental.customer}-${rental.vehicle}`}
-                  className="text-xs transition hover:bg-[#17171A]/50"
-                >
-
-                  <td className="px-5 py-3.5 font-medium">
-                    {rental.customer}
-                  </td>
-
-                  <td className="px-5 py-3.5 text-[#A1A1AA]">
-                    {rental.vehicle}
-                  </td>
-
-                  <td className="px-5 py-3.5 text-[#A1A1AA]">
-                    {rental.pickup}
-                  </td>
-
-                  <td className="px-5 py-3.5 text-[#A1A1AA]">
-                    {rental.returnDate}
-                  </td>
-
-                  <td className="px-5 py-3.5">
-                    <StatusBadge
-                      status={rental.status}
-                    />
-                  </td>
-
-                  <td className="px-5 py-3.5 text-right">
-
-                    <button className="text-[#71717A] hover:text-white">
-                      <MoreHorizontal size={15} />
-                    </button>
-
-                  </td>
-
-                </tr>
-
-              ))}
-
-            </tbody>
-
-          </table>
-
-        </div>
-
+        </Card>
       </section>
 
-      {/* ====================================================
-          QUICK MODULES
-      ==================================================== */}
+      {/* 3. TO-DO / REMINDERS — due & overdue activities */}
+      {features?.automatic_reminders && <div className="mt-4"><ActivitiesPanel compact /></div>}
 
-      <section className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-
-        <QuickModule
-          icon={<Car size={17} />}
-          title="Fleet"
-          description="Manage vehicles, availability and maintenance."
-          href="/dashboard/fleet"
-        />
-
-        <QuickModule
-          icon={<Users size={17} />}
-          title="Customers"
-          description="Customers, documents and rental history."
-          href="/dashboard/customers"
-        />
-
-        <QuickModule
-          icon={<CalendarDays size={17} />}
-          title="Calendar"
-          description="See pickups, returns and upcoming reservations."
-          href="/dashboard/calendar"
-        />
-
-      </section>
-
+      {/* 4. RECENT RENTALS — last: quick history, not the day's priority */}
+      <section className="mt-4"><Card>
+        <CardHeader title="Recent rentals" subtitle="Quotations first, then in progress, then closed" action={<Link href="/dashboard/rentals" className="rounded-lg border border-border px-3 py-2 text-xs text-text-secondary transition hover:text-lime-ink">View all →</Link>} />
+        <div className="overflow-x-auto"><table className="w-full min-w-[660px] text-left text-sm"><thead className="border-b border-border text-[10px] uppercase tracking-wider text-muted"><tr><th className="px-5 py-3 font-normal">Customer</th><th className="px-4 py-3 font-normal">Vehicle</th><th className="px-4 py-3 font-normal">Pickup</th><th className="px-4 py-3 font-normal">Return</th><th className="px-5 py-3 font-normal">Status</th></tr></thead><tbody className="divide-y divide-border">
+          {loading ? <tr><td colSpan={5} className="p-5 text-muted">Loading rentals…</td></tr> : !recentRentals.length ? <tr><td colSpan={5} className="p-5 text-muted">No rentals yet. Create your first booking above.</td></tr> : recentRentals.map(sale => (
+            <tr key={sale.id} onClick={() => router.push(`/dashboard/rentals/${sale.id}`)} className="cursor-pointer hover:bg-white/[0.02]">
+              <td className="max-w-64 truncate px-5 py-4 font-medium">{displayValue(sale.customer) || sale.name}</td>
+              <td className="max-w-64 truncate px-4 py-4 text-text-secondary">{sale.vehicle_id ? <Link href={`/dashboard/calendar?vehicle=${sale.vehicle_id}`} onClick={(event) => event.stopPropagation()} className="hover:text-lime-ink">{vehicleLabel(sale)}</Link> : "Not assigned"}</td>
+              <td className="whitespace-nowrap px-4 py-4 text-xs text-text-secondary">{formatDateShort(sale.date_order)}</td>
+              <td className="whitespace-nowrap px-4 py-4 text-xs text-text-secondary">{formatDateShort(sale.commitment_date)}</td>
+              <td className="px-5 py-4"><StatusBadge meta={rentalStateMeta(getRentalState(sale))} withDot={false} className="normal-case tracking-normal" /></td>
+            </tr>
+          ))}
+        </tbody></table></div>
+      </Card></section>
+      <RentalFleetNotice />
+      {returningVehicle && <ReturnVehicleModal vehicleId={returningVehicle.id} orderId={returningVehicle.orderId}
+        initialNextState={returningVehicle.nextState} onClose={() => setReturningVehicle(null)}
+        onReturned={async () => { await loadDashboard(); setReturningVehicle(null); }} />}
     </main>
   );
 }
 
-// ==========================================================
-// STAT CARD
-// ==========================================================
+// ============================================================
+// SUBCOMPONENTS
+// ============================================================
 
-function StatCard({
-  label,
-  value,
-  detail,
-  change,
+function ScheduleRow({
+  sale,
+  vehicleLabel,
   icon,
-  accent,
+  urgent = false,
+  kind,
+  onReturn,
+  onPickedUp,
+  onCancel,
 }: {
-  label: string;
-  value: string;
-  detail: string;
-  change: string;
+  sale: SaleData;
+  vehicleLabel: string;
   icon: React.ReactNode;
-  accent: "green" | "pink";
+  urgent?: boolean;
+  kind: "pickup" | "return" | "overdue";
+  onReturn?: (vehicleId: number, nextState: "Nettoyage" | "Disponible", saleId: number) => void;
+  onPickedUp?: (saleId: number) => void;
+  onCancel?: (saleId: number) => void;
 }) {
-  const isPink = accent === "pink";
+  const customerName = displayValue(sale.customer) || "Unknown customer";
+  const rentalMeta = rentalStateMeta(getRentalState(sale));
+  const dateLabel = urgent
+    ? `${kind === "pickup" ? "Pickup due" : "Return due"} ${formatDateShort(kind === "pickup" ? sale.date_order : sale.commitment_date)}`
+    : sale.name;
 
+  // Clicking the row opens the action menu, not the rental page directly —
+  // "View rental" inside the menu is what navigates through.
   return (
-    <div className="group relative overflow-hidden rounded-xl border border-[#2B2B30] bg-[#111113]/80 p-5 transition hover:border-[#3b3b42]">
-
-      <div
-        className={`pointer-events-none absolute -right-10 -top-10 h-24 w-24 rounded-full blur-3xl ${
-          isPink
-            ? "bg-[#F06AAA]/[0.05]"
-            : "bg-[#C8F065]/[0.05]"
-        }`}
-      />
-
-      <div className="relative">
-
-        <div className="flex items-center justify-between">
-
-          <div className="flex items-center gap-2 text-[11px] text-[#71717A]">
-
-            <span
-              className={
-                isPink
-                  ? "text-[#F06AAA]"
-                  : "text-[#C8F065]"
-              }
-            >
-              {icon}
-            </span>
-
-            {label}
-
-          </div>
-
-          <span
-            className={
-              isPink
-                ? "text-[10px] text-[#F06AAA]"
-                : "text-[10px] text-[#C8F065]"
-            }
-          >
-            {change}
-          </span>
-
-        </div>
-
-        <div className="mt-5 flex items-baseline gap-2">
-
-          <span className="font-[Syne] text-[26px] font-semibold tracking-[-0.03em]">
-            {value}
-          </span>
-
-          <span className="text-[10px] text-[#71717A]">
-            {detail}
-          </span>
-
-        </div>
-
+    <div className={`flex items-center gap-3 rounded-lg px-2 py-2.5 transition ${urgent ? "hover:bg-danger/10" : "hover:bg-surface-secondary/50"}`}>
+      <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${urgent ? "bg-danger/10 text-danger" : "bg-lime/10 text-lime-ink"}`}>
+        {icon}
       </div>
 
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-xs font-medium text-text">{customerName}</div>
+        <div className="mt-0.5 truncate text-[10px] text-muted">{vehicleLabel} · {dateLabel}</div>
+        {kind === "pickup" && !sale.paperwork?.contract_ready && <Link href={`/dashboard/rentals/${sale.id}#paperwork`} className="text-xs text-danger underline">{sale.paperwork?.documents_ready ? "Contract not ready" : "Identity / licence to verify"} →</Link>}
+      </div>
+
+      <StatusBadge meta={rentalMeta} withDot={false} />
+
+      <RentalActionMenu sale={sale} kind={kind} onReturn={onReturn} onPickedUp={onPickedUp} onCancel={onCancel} />
     </div>
   );
 }
 
-// ==========================================================
-// STATUS BADGE
-// ==========================================================
-
-function StatusBadge({
-  status,
-}: {
-  status: string;
-}) {
-  const styles = {
-    Active: "bg-[#C8F065]/10 text-[#C8F065]",
-    Returning: "bg-[#F06AAA]/10 text-[#F06AAA]",
-    Upcoming: "bg-[#17171A] text-[#A1A1AA]",
-  };
-
+function LoadingRows() {
   return (
-    <span
-      className={`inline-flex rounded-md px-2 py-1 text-[9px] ${
-        styles[status as keyof typeof styles] ||
-        "bg-[#17171A] text-[#A1A1AA]"
-      }`}
-    >
-      {status}
-    </span>
-  );
-}
-
-// ==========================================================
-// QUICK MODULE
-// ==========================================================
-
-function QuickModule({
-  icon,
-  title,
-  description,
-  href,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  description: string;
-  href: string;
-}) {
-  return (
-    <a
-      href={href}
-      className="group rounded-xl border border-[#2B2B30] bg-[#111113]/60 p-4 transition hover:border-[#C8F065]/20 hover:bg-[#17171A]"
-    >
-
-      <div className="flex items-start justify-between">
-
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#C8F065]/10 text-[#C8F065]">
-          {icon}
-        </div>
-
-        <ArrowUpRight
-          size={15}
-          className="text-[#71717A] transition group-hover:text-[#C8F065]"
-        />
-
-      </div>
-
-      <h3 className="mt-4 font-[Syne] text-sm font-semibold">
-        {title}
-      </h3>
-
-      <p className="mt-1 text-[11px] leading-relaxed text-[#71717A]">
-        {description}
-      </p>
-
-    </a>
+    <div className="space-y-2">
+      {[1, 2, 3].map((item) => (
+        <div key={item} className="h-12 animate-pulse rounded-lg bg-surface-secondary" />
+      ))}
+    </div>
   );
 }

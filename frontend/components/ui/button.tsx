@@ -7,10 +7,10 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        primary: "bg-lime text-background hover:bg-lime-dark shadow-glow-lime",
+        primary: "bg-lime text-[#111113] hover:bg-lime-dark shadow-glow-lime",
         secondary: "bg-surface border border-border text-text-secondary hover:text-text hover:border-lime/40",
         ghost: "text-text-secondary hover:text-text hover:bg-surface-secondary",
-        accent: "bg-pink text-white hover:opacity-90 shadow-glow-pink",
+        accent: "bg-pink text-text hover:opacity-90 shadow-glow-pink",
       },
       size: {
         default: "px-5 py-2.5",

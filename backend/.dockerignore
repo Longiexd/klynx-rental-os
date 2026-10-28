@@ -1,0 +1,10 @@
+.env
+.env.*
+*.key
+*.pem
+*.sqlite3*
+__pycache__
+.pytest_cache
+.venv
+tests
+test_*.py

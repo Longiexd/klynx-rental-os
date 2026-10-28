@@ -1,27 +1,156 @@
-:root {
-  /* Brand — Green */
+:root,
+html[data-theme="dark"] {
+  color-scheme: dark;
+
+  /* Brand */
   --lime: #C8F065;
   --lime-dark: #6E9501;
-
-  /* Brand — Pink (accent only) */
+  --lime-ink: #C8F065;
   --pink: #F06AAA;
   --pink-dark: #54273C;
+  --pink-ink: #F06AAA;
+  --blue-ink: #60A5FA;
+  --violet-ink: #A78BFA;
+  --orange-ink: #FB923C;
+  --red-ink: #EF4444;
 
-  /* Neutrals */
-  --background: #09090B;
-  --surface: #111113;
-  --surface-secondary: #17171A;
-  --border: #2B2B30;
+  /* To-do / attention accents */
+  --todo-bg: rgba(192, 132, 252, 0.16);
+  --todo-bg-soft: rgba(192, 132, 252, 0.08);
+  --todo-border: rgba(192, 132, 252, 0.38);
+  --todo-text: #E9D5FF;
+  --todo-fill: #C4B5FD;
+  --todo-fill-text: #111113;
+  --notification-red: #B91C1C;
+
+  /* Dark UI */
+  --background: #0E0E10;
+  --surface: #1B1B20;
+  --surface-secondary: #24242B;
+  --border: #41414B;
+  --border-strong: #61616D;
   --text: #FFFFFF;
-  --text-secondary: #A1A1AA;
-  --muted: #71717A;
+  --text-secondary: #C2C2CE;
+  --muted: #ABABBA;
 
-  /* Semantic aliases (reference brand colors, not hardcoded) */
+  --stage: #171417;
+  --shell-border: #49303D;
+  --chrome-bg: #0E0E10;
+  --row-hover: #292930;
+  --sidebar-active: rgba(200, 240, 101, 0.10);
+  --card-shadow: inset 0 1px 0 rgba(255,255,255,.04), 0 4px 16px rgba(0,0,0,.18);
+  --shell-shadow: 0 24px 80px rgba(0,0,0,.20);
+
+  /* Semantic statuses */
+  --status-available-bg: rgba(200, 240, 101, 0.10);
+  --status-available-border: rgba(200, 240, 101, 0.22);
+  --status-available-text: #C8F065;
+
+  --status-reserved-bg: rgba(250, 204, 21, 0.10);
+  --status-reserved-border: rgba(250, 204, 21, 0.24);
+  --status-reserved-text: #FACC15;
+
+  --status-rented-bg: rgba(240, 106, 170, 0.10);
+  --status-rented-border: rgba(240, 106, 170, 0.22);
+  --status-rented-text: #F06AAA;
+
+  --status-cleaning-bg: rgba(96, 165, 250, 0.10);
+  --status-cleaning-border: rgba(96, 165, 250, 0.24);
+  --status-cleaning-text: #60A5FA;
+
+  --status-maintenance-bg: rgba(167, 139, 250, 0.10);
+  --status-maintenance-border: rgba(167, 139, 250, 0.24);
+  --status-maintenance-text: #A78BFA;
+
+  --status-danger-bg: rgba(240, 101, 106, 0.10);
+  --status-danger-border: rgba(240, 101, 106, 0.22);
+  --status-danger-text: #F0656A;
+
   --success: var(--lime);
   --danger: #F0656A;
 
-  /* Reusable glow shadows — used in buttons/preview cards */
   --shadow-glow-lime: 0 0 30px rgba(200, 240, 101, 0.15);
   --shadow-glow-pink: 0 0 30px rgba(240, 106, 170, 0.15);
   --shadow-card: 0 30px 120px rgba(0, 0, 0, 0.7);
 }
+
+html[data-theme="light"] {
+  color-scheme: light;
+
+  /* Brand stays identical in both modes */
+  --lime: #C8F065;
+  --lime-dark: #A8D84A;
+  --lime-ink: #365000;
+  --pink: #F06AAA;
+  --pink-dark: #B93878;
+  --pink-ink: #9D245F;
+  --blue-ink: #134C87;
+  --violet-ink: #6D28D9;
+  --orange-ink: #925000;
+  --red-ink: #B91C1C;
+
+  /* Higher-contrast to-do / attention palette for light mode */
+  --todo-bg: #EEE7FF;
+  --todo-bg-soft: #F6F2FF;
+  --todo-border: #8E6BC7;
+  --todo-text: #5B21B6;
+  --todo-fill: #6D28D9;
+  --todo-fill-text: #FFFFFF;
+  --notification-red: #D92D36;
+
+  /* Klynx light palette — cool canvas, crisp white surfaces.
+     The slightly darker canvas gives cards/sidebar real separation without
+     turning light mode grey or changing the product identity. */
+  --background: #DCE4EE;
+  --surface: #FFFFFF;
+  --surface-secondary: #E5ECF5;
+  --border: #879AB1;
+  --border-strong: #6E829A;
+  --text: #111113;
+  --text-secondary: #28384C;
+  --muted: #41516A;
+
+  --stage: #DAE2EC;
+  --shell-border: #B5C0CF;
+  --chrome-bg: #FFFFFF;
+  --row-hover: #E7EEF6;
+  --sidebar-active: #D9F2AF;
+  --card-shadow: 0 1px 3px rgba(17,17,19,.10), 0 8px 26px rgba(17,17,19,.08);
+  --shell-shadow: 0 20px 65px rgba(17,17,19,.10);
+
+  /* Requested status palette */
+  --status-available-bg: #DDF5B4;
+  --status-available-border: #74A936;
+  --status-available-text: #304900;
+
+  --status-reserved-bg: #FFE8A3;
+  --status-reserved-border: #B7800A;
+  --status-reserved-text: #684400;
+
+  --status-rented-bg: #FFD8E9;
+  --status-rented-border: #C5588B;
+  --status-rented-text: #8A164B;
+
+  --status-cleaning-bg: #D8EAFE;
+  --status-cleaning-border: #4582C3;
+  --status-cleaning-text: #134C87;
+
+  --status-maintenance-bg: #E5DCFF;
+  --status-maintenance-border: #8E6BC7;
+  --status-maintenance-text: #6D28D9;
+
+  --status-danger-bg: #FFDBDF;
+  --status-danger-border: #C94A5B;
+  --status-danger-text: #9F1239;
+
+  --success: #304900;
+  --danger: #9F1239;
+
+  --shadow-glow-lime: 0 8px 24px rgba(168, 216, 74, 0.15);
+  --shadow-glow-pink: 0 8px 24px rgba(240, 106, 170, 0.12);
+  --shadow-card: 0 14px 42px rgba(17, 17, 19, 0.07);
+}
+
+.klynx-brand-light { display: none; }
+html[data-theme="light"] .klynx-brand-dark { display: none; }
+html[data-theme="light"] .klynx-brand-light { display: block; }

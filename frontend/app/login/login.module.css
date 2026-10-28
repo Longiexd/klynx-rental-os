@@ -1,0 +1,48 @@
+.page {
+  color-scheme: dark;
+  --background: #090a0c;
+  --text: #f3f3f5;
+  --text-secondary: #b6b6c1;
+  --muted: #a0a0ae;
+  --border: #41414b;
+  background: var(--background);
+  color: var(--text);
+  isolation: isolate;
+}
+.panel {
+  background: #1b1b20;
+  border-color: #41414b;
+  box-shadow: 0 24px 80px #000a, 0 1px 0 #ffffff08 inset;
+}
+.ambient {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse at 8% 12%, #b7f3480b, transparent 48%),
+    radial-gradient(ellipse at 92% 88%, #f444970c, transparent 48%);
+}
+.ambient::before, .ambient::after {
+  content: "";
+  position: absolute;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  transition: left 450ms ease-out, top 450ms ease-out;
+}
+.ambient::before {
+  width: 680px;
+  height: 680px;
+  left: var(--glow-x, 22%);
+  top: var(--glow-y, 30%);
+  background: radial-gradient(circle, #b7f3481c, transparent 75%);
+}
+.ambient::after {
+  width: 580px;
+  height: 580px;
+  left: var(--pink-x, 84.6%);
+  top: var(--pink-y, 82%);
+  background: radial-gradient(circle, #f4449719, transparent 75%);
+}
+@media (prefers-reduced-motion: reduce), (hover: none), (pointer: coarse) {
+  .ambient::before, .ambient::after { transition: none; }
+}

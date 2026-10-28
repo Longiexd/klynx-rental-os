@@ -1,45 +1,25 @@
-//======== Dependencies ========
-
-node_modules/
-.pnpm-store/
-
-//======== Next.js ========
-
-.next/
-out/
-tsconfig.tsbuildinfo
-
-//======== Python ========
-
-__pycache__/
-*.py[cod]
-.pytest_cache/
+.env*
+!.env.example
+**/.env*
+!**/.env.example
 .venv/
 venv/
-
-//======== Environment ========
-
-.env
-.env.*
-!.env.example
-
-//======== Secrets / Certificates ========
-
-*.pem
+node_modules/
+.next/
+.vinext/
+.wrangler/
+dist/
+runtime/
+__pycache__/
+.pytest_cache/
+*.py[cod]
+*.tsbuildinfo
+next-env.d.ts
 *.key
+*.pem
 *.p12
 *.pfx
-*.crt
-*.cer
-
-//======== Logs ========
-
+*.sqlite*
+*.db
+*.sql
 *.log
-logs/
-
-//======== OS / Editor ========
-
-.DS_Store
-Thumbs.db
-.vscode/
-.idea/

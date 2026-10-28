@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <template id="customer_order_note" inherit_id="sale.report_saleorder_document">
+        <xpath expr="//span[@name='order_note']" position="attributes">
+            <attribute name="t-field"/>
+            <attribute name="t-out">doc._klynx_customer_note()</attribute>
+        </xpath>
+    </template>
+</odoo>

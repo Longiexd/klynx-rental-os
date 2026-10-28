@@ -1,205 +1,62 @@
-from fastapi import FastAPI
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, Depends, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from app.odoo_client import odoo
+
+from app.config import get_cors_allowed_origins
+from app.auth import router as auth_router, require_session
+from app.control import Control, Settings
+from app.routes import activities, analytics, booking_changes, calendar, cars, crm, customers, invoices, leads, rentals, sales, search
+
+@asynccontextmanager
+async def lifespan(app):
+    app.state.control = Control(Settings.from_env())
+    app.state.control.verify()
+    yield
 
 
 app = FastAPI(
-    title="Klynx Rental OS API"
+    title="Klynx Rental OS API",
+    version="2.0.0",
+    lifespan=lifespan,
+    docs_url=None, redoc_url=None, openapi_url=None,
 )
-
-
-# ==========================
-# CORS
-# ==========================
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "https://rental-os.example.com",
-        "http://localhost:3100",
-    ],
+    allow_origins=get_cors_allowed_origins(),
     allow_credentials=True,
     allow_methods=["*"],
-    allow_headers=["*"],
+    allow_headers=["Content-Type", "X-Klynx-Proxy-Key", "X-Klynx-Session", "X-Klynx-Client-IP"],
 )
 
-# ==========================
-# ROOT
-# ==========================
 
 @app.get("/")
 def root():
-    return {
-        "status": "Rental OS API"
-    }
-
-# ==========================
-# TEST LOGIN
-# ==========================
-
-@app.get("/login")
-def login():
-    return {
-        "uid": odoo.authenticate()
-    }
+    return {"status": "Rental OS API"}
 
 
-# ==========================
-# FLEET
-# ==========================
-
-@app.get("/cars")
-def cars():
-
-    vehicles = odoo.execute(
-        "fleet.vehicle",
-        "search_read",
-        [],
-        fields=[
-            "name",
-            "license_plate",
-            "model_id",
-            "state_id"
-        ]
-    )
-
-    formatted = []
-
-    for car in vehicles:
-
-        formatted.append({
-            "id": car["id"],
-            "name": car["name"],
-            "license_plate": car["license_plate"],
-            "model": car["model_id"][1] if car["model_id"] else None,
-            "status": car["state_id"][1] if car["state_id"] else None
-        })
+@app.exception_handler(RequestValidationError)
+async def validation_error(request: Request, error: RequestValidationError):
+    # Pydantic errors can include the submitted password in `input`.
+    return JSONResponse(status_code=422, content={"detail": "Invalid request"})
 
 
-    return {
-        "count": len(formatted),
-        "cars": formatted
-    }
+@app.middleware("http")
+async def private_responses(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    return response
 
 
-
-# ==========================
-# CUSTOMERS
-# ==========================
-
-@app.get("/customers")
-def customers():
-
-    partners = odoo.execute(
-        "res.partner",
-        "search_read",
-        [],
-        fields=[
-            "name",
-            "phone",
-            "email",
-            "mobile"
-        ]
-    )
+@app.get("/ready")
+def ready():
+    app.state.control.verify()
+    return {"status": "ready", "auth": "tenant-session-v1"}
 
 
-    return {
-        "count": len(partners),
-        "customers": partners
-    }
-
-
-
-# ==========================
-# LEADS
-# ==========================
-
-@app.get("/leads")
-def leads():
-
-    leads = odoo.execute(
-        "crm.lead",
-        "search_read",
-        [],
-        fields=[
-            "name",
-            "partner_id",
-            "phone",
-            "email_from",
-            "stage_id",
-            "expected_revenue"
-        ]
-    )
-
-
-    formatted = []
-
-
-    for lead in leads:
-
-        formatted.append({
-
-            "id": lead["id"],
-            "title": lead["name"],
-
-            "customer": (
-                lead["partner_id"][1]
-                if lead["partner_id"]
-                else None
-            ),
-
-            "phone": lead["phone"],
-            "email": lead["email_from"],
-
-            "stage": (
-                lead["stage_id"][1]
-                if lead["stage_id"]
-                else None
-            ),
-
-            "expected_revenue": lead["expected_revenue"]
-
-        })
-
-
-    return {
-        "count": len(formatted),
-        "leads": formatted
-    }
-
-
-
-# ==========================
-# CREATE LEAD
-# ==========================
-
-class LeadCreate(BaseModel):
-
-    name: str
-    phone: str | None = None
-    email: str | None = None
-    description: str | None = None
-
-
-
-@app.post("/leads")
-def create_lead(lead: LeadCreate):
-
-
-    lead_id = odoo.execute(
-        "crm.lead",
-        "create",
-        {
-            "name": lead.name,
-            "phone": lead.phone,
-            "email_from": lead.email,
-            "description": lead.description
-        }
-    )
-
-
-    return {
-        "success": True,
-        "lead_id": lead_id
-    }
+app.include_router(auth_router)
+for module in (cars, customers, leads, crm, sales, invoices, rentals, calendar, analytics, activities, booking_changes, search):
+    app.include_router(module.router, dependencies=[Depends(require_session)])

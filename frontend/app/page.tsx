@@ -2,7 +2,7 @@ import Link from "next/link";
 
 export default function Home() {
   return (
-    <div className="min-h-screen overflow-hidden bg-[#09090B] text-white">
+    <div className="min-h-screen overflow-hidden bg-background text-text">
 
       {/* =========================================================
           AMBIENT BACKGROUND
@@ -79,15 +79,15 @@ export default function Home() {
           className="
             rounded-lg
             border
-            border-[#2B2B30]
-            bg-[#111113]
+            border-border
+            bg-surface
             px-4
             py-2
             text-sm
-            text-[#A1A1AA]
+            text-text-secondary
             transition
-            hover:border-[#3B3B42]
-            hover:text-white
+            hover:border-strong
+            hover:text-text
           "
         >
           Demo
@@ -113,12 +113,12 @@ export default function Home() {
               gap-2
               rounded-full
               border
-              border-[#2B2B30]
-              bg-[#111113]/70
+              border-border
+              bg-surface/70
               px-3
               py-1.5
               text-xs
-              text-[#A1A1AA]
+              text-text-secondary
               backdrop-blur
             "
           >
@@ -180,7 +180,7 @@ export default function Home() {
               max-w-xl
               text-base
               leading-relaxed
-              text-[#A1A1AA]
+              text-text-secondary
             "
           >
             Klynx OS connects fleet, rentals, customers and analytics
@@ -239,8 +239,8 @@ export default function Home() {
             className="
               rounded-2xl
               border
-              border-[#2B2B30]
-              bg-[#111113]/80
+              border-border
+              bg-surface/80
               p-2
               shadow-[0_30px_120px_rgba(0,0,0,.7)]
               backdrop-blur-xl
@@ -252,8 +252,8 @@ export default function Home() {
                 overflow-hidden
                 rounded-xl
                 border
-                border-[#2B2B30]
-                bg-[#09090B]
+                border-border
+                bg-background
               "
             >
 
@@ -266,7 +266,7 @@ export default function Home() {
                   items-center
                   gap-2
                   border-b
-                  border-[#2B2B30]
+                  border-border
                   px-4
                 "
               >
@@ -278,7 +278,7 @@ export default function Home() {
                   className="
                     ml-4
                     text-xs
-                    text-[#71717A]
+                    text-muted
                   "
                 >
                   klynx-os/dashboard
@@ -302,9 +302,9 @@ export default function Home() {
 
                   {[
                     "Dashboard",
-                    "Fleet",
+                    "Vehicles",
                     "Rentals",
-                    "CRM",
+                    "Prospects",
                     "Calendar",
                     "Analytics",
                   ].map((item, index) => (
@@ -318,7 +318,7 @@ export default function Home() {
                         ${
                           index === 0
                             ? "bg-[#C8F065]/10 text-[#C8F065]"
-                            : "text-[#71717A]"
+                            : "text-muted"
                         }
                       `}
                     >
@@ -345,13 +345,13 @@ export default function Home() {
                         className="
                           rounded-xl
                           border
-                          border-[#2B2B30]
-                          bg-[#111113]
+                          border-border
+                          bg-surface
                           p-4
                         "
                       >
 
-                        <p className="text-xs text-[#71717A]">
+                        <p className="text-xs text-muted">
                           {label}
                         </p>
 
@@ -377,7 +377,7 @@ export default function Home() {
                       h-40
                       rounded-xl
                       border
-                      border-[#2B2B30]
+                      border-border
                       bg-gradient-to-br
                       from-[#C8F065]/5
                       via-transparent
